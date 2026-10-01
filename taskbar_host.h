@@ -13,6 +13,7 @@ struct TaskbarInfo {
 
 TaskbarInfo QueryPrimaryTaskbar();
 bool TaskbarLikelyOccluded(const TaskbarInfo& info);
+bool IsFullscreenAppCoveringTaskbar(const TaskbarInfo& info);
 
 enum class HostMode {
   None,
@@ -29,6 +30,7 @@ class TaskbarHost {
   void Destroy();
   bool Recreate();
   bool SyncGeometry();
+  void SetVisible(bool visible);
 
   HWND Hwnd() const { return hwnd_; }
   HostMode Mode() const { return mode_; }
@@ -45,4 +47,5 @@ class TaskbarHost {
   HostMode mode_ = HostMode::None;
   TaskbarInfo info_{};
   ATOM atom_ = 0;
+  bool visible_ = true;
 };

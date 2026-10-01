@@ -30,6 +30,7 @@ INT_PTR CALLBACK SettingsProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
   switch (msg) {
     case WM_INITDIALOG:
       SyncControls(hDlg);
+      CenterDialogOnDesktop(hDlg);
       return TRUE;
     case WM_COMMAND: {
       const int id = LOWORD(wParam);
@@ -66,6 +67,25 @@ INT_PTR CALLBACK SettingsProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 }
 
 }  // namespace
+
+void CenterDialogOnDesktop(HWND hwnd) {
+  if (!hwnd || !IsWindow(hwnd)) return;
+
+  RECT wr{};
+  GetWindowRect(hwnd, &wr);
+  const int w = wr.right - wr.left;
+  const int h = wr.bottom - wr.top;
+
+  POINT cursor{};
+  GetCursorPos(&cursor);
+  HMONITOR mon = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+  MONITORINFO mi{ sizeof(mi) };
+  if (!GetMonitorInfoW(mon, &mi)) return;
+
+  const int x = mi.rcWork.left + ((mi.rcWork.right - mi.rcWork.left) - w) / 2;
+  const int y = mi.rcWork.top + ((mi.rcWork.bottom - mi.rcWork.top) - h) / 2;
+  SetWindowPos(hwnd, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
 
 bool SettingsDialogIsOpen() {
   return g_settingsHwnd && IsWindow(g_settingsHwnd);

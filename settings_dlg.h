@@ -9,3 +9,4 @@ void SettingsDialogShow(HINSTANCE instance, HWND owner, AppSettings& settings,
 bool SettingsDialogIsOpen();
 HWND SettingsDialogHwnd();
 void SettingsDialogFocus();
+void CenterDialogOnDesktop(HWND hwnd);

@@ -130,65 +130,93 @@ void VisualizerRenderer::Paint(const TaskbarInfo& info, const Palette& palette,
     const float longAxis = horizontalBar ? W : H;
     const float gain = (std::max)(0.85f, (std::min)(1.35f, palette.opacityCap / 0.22f));
 
-    // Dense columns of flat LED segments, one hue per column.
-    const float slot = (std::max)(5.f, shortAxis * 0.20f);
-    const int count = (std::max)(32, static_cast<int>(longAxis / slot));
-    const float gap = (std::max)(1.25f, slot * 0.28f);
+    // Solid flat bars with peak caps; hue sweeps the saturated EQ spectrum twice.
+    const float slot = (std::max)(6.5f, shortAxis * 0.30f);
+    const int count = (std::max)(28, static_cast<int>(longAxis / slot));
+    const float gap = (std::max)(1.5f, slot * 0.26f);
     const float bw = (std::max)(1.5f, slot - gap);
-    const float seg = (std::max)(2.2f, shortAxis * 0.055f);
-    const float segGap = (std::max)(1.f, seg * 0.38f);
-    const float step = seg + segGap;
-    const float maxH = shortAxis * 0.78f;
-    const int maxSeg = (std::max)(1, static_cast<int>(maxH / step));
-
-    auto lift = [](Rgb c, float amount) {
-      amount = (std::max)(0.f, (std::min)(1.f, amount));
-      return Rgb{c.r + (1.f - c.r) * amount, c.g + (1.f - c.g) * amount,
-                 c.b + (1.f - c.b) * amount};
-    };
+    const float capThick = (std::max)(2.f, (std::min)(2.8f, bw * 0.30f));
+    const float capGap = 1.4f;
+    const float maxH = shortAxis * 0.82f;
 
     for (int i = 0; i < count; ++i) {
       const float t = (count == 1) ? 0.f : static_cast<float>(i) / (count - 1);
       const int bandIndex = (std::min)(kBandCount - 1, static_cast<int>(t * (kBandCount - 1)));
       const float level = frame.bands[bandIndex];
       const float peak = frame.peaks[bandIndex];
-      if (level < 0.02f && peak < 0.02f) continue;
+      const float bh = level * maxH;
+      float ph = peak * maxH;
+      if (ph > bh + 0.4f) ph = (std::max)(ph, bh + capGap + capThick);
+      ph = (std::max)(capThick, ph);
+      if (bh < 1.f && peak < 0.02f) continue;
 
-      // Two passes of the spectrum, same as the reference image.
       const float hueT = t * 2.f - (t >= 0.5f ? 1.f : 0.f);
-      const Rgb hue = LedStripRgb(hueT, palette.brightness);
-      int lit = static_cast<int>((level * maxH + segGap) / step);
-      lit = (std::max)(0, (std::min)(maxSeg, lit));
-      int peakSeg = static_cast<int>((peak * maxH + segGap) / step) - 1;
-      peakSeg = (std::max)(-1, (std::min)(maxSeg - 1, peakSeg));
-      if (peakSeg < lit) peakSeg = lit - 1;
+      const Rgb c = LedStripRgb(hueT, palette.brightness);
+      const float bodyA = (0.28f + level * 0.34f) * frame.envelope * gain;
+      const float tipA = (std::min)(1.f, (0.72f + peak * 0.18f) * frame.envelope * gain);
 
-      auto drawSeg = [&](int s, bool hot) {
-        if (s < 0) return;
-        const Rgb c = lift(hue, hot ? 0.18f : 0.f);
-        const float a = (hot ? 0.62f : 0.36f) * frame.envelope * gain;
-        brush->SetColor(Premul(c, (std::min)(1.f, a)));
-        const float along0 = i * slot + gap * 0.5f;
-        const float dist = s * step;
-        if (info.edge == TaskbarEdge::Bottom) {
-          const float y1 = H - dist;
-          rt_->FillRectangle(D2D1::RectF(along0, y1 - seg, along0 + bw, y1), brush);
-        } else if (info.edge == TaskbarEdge::Top) {
-          const float y0 = dist;
-          rt_->FillRectangle(D2D1::RectF(along0, y0, along0 + bw, y0 + seg), brush);
-        } else if (info.edge == TaskbarEdge::Left) {
-          const float x0 = dist;
-          rt_->FillRectangle(D2D1::RectF(x0, along0, x0 + seg, along0 + bw), brush);
-        } else {
-          const float x1 = W - dist;
-          rt_->FillRectangle(D2D1::RectF(x1 - seg, along0, x1, along0 + bw), brush);
+      auto fillBar = [&](float x0, float y0, float x1, float y1, D2D1_POINT_2F tip,
+                         D2D1_POINT_2F base) {
+        ID2D1GradientStopCollection* stops = nullptr;
+        D2D1_GRADIENT_STOP gs[3]{};
+        gs[0].position = 0.f;
+        gs[1].position = 0.4f;
+        gs[2].position = 1.f;
+        gs[0].color = Premul(c, 1.f);
+        gs[1].color = Premul(c, 0.55f);
+        gs[2].color = Premul(c, 0.08f);
+        rt_->CreateGradientStopCollection(gs, 3, &stops);
+        if (!stops) return;
+        ID2D1LinearGradientBrush* fill = nullptr;
+        rt_->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(tip, base), stops,
+                                       &fill);
+        if (fill) {
+          fill->SetOpacity(bodyA);
+          rt_->FillRectangle(D2D1::RectF(x0, y0, x1, y1), fill);
+          fill->Release();
         }
+        stops->Release();
       };
 
-      for (int s = 0; s < lit; ++s) {
-        drawSeg(s, s == lit - 1 && peakSeg == s);
+      if (info.edge == TaskbarEdge::Bottom) {
+        const float x = i * slot + gap * 0.5f;
+        if (bh > 1.f) {
+          fillBar(x, H - bh, x + bw, H, D2D1::Point2F(x, H - bh), D2D1::Point2F(x, H));
+        }
+        if (peak > 0.02f) {
+          brush->SetColor(Premul(c, tipA));
+          const float top = H - ph;
+          rt_->FillRectangle(D2D1::RectF(x, top, x + bw, top + capThick), brush);
+        }
+      } else if (info.edge == TaskbarEdge::Top) {
+        const float x = i * slot + gap * 0.5f;
+        if (bh > 1.f) {
+          fillBar(x, 0, x + bw, bh, D2D1::Point2F(x, bh), D2D1::Point2F(x, 0));
+        }
+        if (peak > 0.02f) {
+          brush->SetColor(Premul(c, tipA));
+          rt_->FillRectangle(D2D1::RectF(x, ph - capThick, x + bw, ph), brush);
+        }
+      } else if (info.edge == TaskbarEdge::Left) {
+        const float y = i * slot + gap * 0.5f;
+        if (bh > 1.f) {
+          fillBar(0, y, bh, y + bw, D2D1::Point2F(bh, y), D2D1::Point2F(0, y));
+        }
+        if (peak > 0.02f) {
+          brush->SetColor(Premul(c, tipA));
+          rt_->FillRectangle(D2D1::RectF(ph - capThick, y, ph, y + bw), brush);
+        }
+      } else {
+        const float y = i * slot + gap * 0.5f;
+        if (bh > 1.f) {
+          fillBar(W - bh, y, W, y + bw, D2D1::Point2F(W - bh, y), D2D1::Point2F(W, y));
+        }
+        if (peak > 0.02f) {
+          brush->SetColor(Premul(c, tipA));
+          const float tip = W - ph;
+          rt_->FillRectangle(D2D1::RectF(tip, y, tip + capThick, y + bw), brush);
+        }
       }
-      if (peakSeg >= lit) drawSeg(peakSeg, true);
     }
 
     brush->Release();

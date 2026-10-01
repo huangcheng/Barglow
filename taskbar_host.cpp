@@ -1,6 +1,7 @@
 #include "taskbar_host.h"
 
 #include <shellapi.h>
+#include <shobjidl.h>
 
 #pragma comment(lib, "shell32.lib")
 
@@ -45,9 +46,78 @@ TaskbarInfo QueryPrimaryTaskbar() {
   return info;
 }
 
+bool IsFullscreenAppCoveringTaskbar(const TaskbarInfo& info) {
+  if (!info.valid) return true;
+
+  // Exclusive / D3D / presentation fullscreen.
+  QUERY_USER_NOTIFICATION_STATE notify = QUNS_ACCEPTS_NOTIFICATIONS;
+  if (SUCCEEDED(SHQueryUserNotificationState(&notify))) {
+    if (notify == QUNS_BUSY || notify == QUNS_RUNNING_D3D_FULL_SCREEN ||
+        notify == QUNS_PRESENTATION_MODE) {
+      return true;
+    }
+  }
+
+  // Borderless fullscreen: foreground window covers the monitor (including taskbar strip).
+  HWND fg = GetForegroundWindow();
+  if (!fg || !IsWindowVisible(fg)) return false;
+  if (fg == GetShellWindow()) return false;
+
+  wchar_t cls[256]{};
+  GetClassNameW(fg, cls, 256);
+  if (lstrcmpiW(cls, L"Shell_TrayWnd") == 0 || lstrcmpiW(cls, L"Shell_SecondaryTrayWnd") == 0 ||
+      lstrcmpiW(cls, L"Progman") == 0 || lstrcmpiW(cls, L"WorkerW") == 0) {
+    return false;
+  }
+
+  HMONITOR mon = MonitorFromRect(&info.rect, MONITOR_DEFAULTTONEAREST);
+  MONITORINFO mi{ sizeof(mi) };
+  if (!GetMonitorInfoW(mon, &mi)) return false;
+
+  RECT wr{};
+  if (!GetWindowRect(fg, &wr)) return false;
+
+  // Nearly full monitor coverage (allow a few px for borders).
+  const int mw = mi.rcMonitor.right - mi.rcMonitor.left;
+  const int mh = mi.rcMonitor.bottom - mi.rcMonitor.top;
+  const int ww = wr.right - wr.left;
+  const int wh = wr.bottom - wr.top;
+  if (ww >= mw - 4 && wh >= mh - 4) {
+    RECT cover{};
+    if (IntersectRect(&cover, &wr, &info.rect)) {
+      const int coverArea = (cover.right - cover.left) * (cover.bottom - cover.top);
+      const int barArea = (info.rect.right - info.rect.left) * (info.rect.bottom - info.rect.top);
+      if (barArea > 0 && coverArea * 2 > barArea) return true;
+    }
+  }
+
+  // Taskbar strip actually covered by another top-level window.
+  POINT samples[3] = {
+      {(info.rect.left + info.rect.right) / 2, (info.rect.top + info.rect.bottom) / 2},
+      {info.rect.left + 8, (info.rect.top + info.rect.bottom) / 2},
+      {info.rect.right - 8, (info.rect.top + info.rect.bottom) / 2},
+  };
+  int covered = 0;
+  for (POINT pt : samples) {
+    HWND hit = WindowFromPoint(pt);
+    if (!hit) continue;
+    HWND root = GetAncestor(hit, GA_ROOT);
+    if (!root) root = hit;
+    if (root == info.tray) continue;
+    if (info.tray && IsChild(info.tray, hit)) continue;
+    // Ignore our own overlay host.
+    wchar_t hitCls[128]{};
+    GetClassNameW(root, hitCls, 128);
+    if (lstrcmpiW(hitCls, L"BarglowTaskbarHost") == 0) continue;
+    ++covered;
+  }
+  return covered >= 2;
+}
+
 bool TaskbarLikelyOccluded(const TaskbarInfo& info) {
   if (!info.valid || !info.tray) return true;
   if (!IsWindowVisible(info.tray)) return true;
+  if (IsFullscreenAppCoveringTaskbar(info)) return true;
 
   APPBARDATA abd{};
   abd.cbSize = sizeof(abd);
@@ -117,17 +187,28 @@ bool TaskbarHost::SyncGeometry() {
 
   const int w = info_.rect.right - info_.rect.left;
   const int h = info_.rect.bottom - info_.rect.top;
+  const UINT showFlag = visible_ ? SWP_SHOWWINDOW : SWP_HIDEWINDOW;
 
   if (mode_ == HostMode::Child) {
     POINT pt{ info_.rect.left, info_.rect.top };
     ScreenToClient(info_.tray, &pt);
     SetWindowPos(hwnd_, HWND_TOP, pt.x, pt.y, w, h,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+                 SWP_NOACTIVATE | showFlag | SWP_NOSENDCHANGING);
   } else {
     SetWindowPos(hwnd_, HWND_TOPMOST, info_.rect.left, info_.rect.top, w, h,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                 SWP_NOACTIVATE | showFlag);
   }
   return true;
+}
+
+void TaskbarHost::SetVisible(bool visible) {
+  if (!hwnd_) {
+    visible_ = visible;
+    return;
+  }
+  if (visible_ == visible && !!IsWindowVisible(hwnd_) == visible) return;
+  visible_ = visible;
+  ShowWindow(hwnd_, visible ? SW_SHOWNOACTIVATE : SW_HIDE);
 }
 
 bool TaskbarHost::CreateChild() {

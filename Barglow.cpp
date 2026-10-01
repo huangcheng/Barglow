@@ -69,6 +69,7 @@ void RemoveTrayIcon() {
 INT_PTR CALLBACK AboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM) {
   switch (message) {
     case WM_INITDIALOG:
+      CenterDialogOnDesktop(hDlg);
       return TRUE;
     case WM_COMMAND:
       if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
@@ -107,6 +108,7 @@ void TickVisual() {
 
   const TaskbarInfo info = g_host.Info();
   const bool occluded = TaskbarLikelyOccluded(info) || !g_settings.enabled;
+  g_host.SetVisible(!occluded);
 
   std::vector<float> chunk(4096);
   const size_t n = g_audio.Ring().Read(chunk.data(), chunk.size());
@@ -118,8 +120,10 @@ void TickVisual() {
   const SpectrumFrame frame =
       g_spectrum.Update(g_settings.enabled && !occluded, g_audio.LastPacketQpc(),
                         static_cast<ULONGLONG>(g_qpcFreq.QuadPart));
+  if (occluded) return;
+
   const Palette palette = ResolvePalette(g_settings);
-  g_renderer.Present(g_host.Hwnd(), info, palette, frame, occluded);
+  g_renderer.Present(g_host.Hwnd(), info, palette, frame, false);
 }
 
 void ShutdownApp() {
