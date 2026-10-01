@@ -1,0 +1,30 @@
+# Multi-model plan review outputs (pi audits)
+docs/audit/*.txt
+docs/audit/*.err.txt
+docs/audit/shots/
+
+# Visual Studio / MSVC
+.vs/
+x64/
+Barglow/x64/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+ipch/
+*.aps
+*.ncb
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.exp
+*.log
+*.tlog
+*.idb
+*.ipdb
+*.iobj
+*.recipe
+*.Build.CppClean.log
