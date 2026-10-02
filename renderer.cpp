@@ -223,8 +223,11 @@ void VisualizerRenderer::Paint(const TaskbarInfo& info, const Palette& palette,
   }
 
   const HRESULT hr = rt_->EndDraw();
-  if (hr == D2DERR_RECREATE_TARGET) {
-    // Caller will Ensure again next frame.
+  if (hr == D2DERR_RECREATE_TARGET || FAILED(hr)) {
+    if (rt_) {
+      rt_->Release();
+      rt_ = nullptr;
+    }
   }
 }
 

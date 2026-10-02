@@ -46,6 +46,32 @@ TaskbarInfo QueryPrimaryTaskbar() {
   return info;
 }
 
+bool IsShellExperienceProcess(HWND hwnd) {
+  if (!hwnd) return false;
+  DWORD pid = 0;
+  GetWindowThreadProcessId(hwnd, &pid);
+  if (!pid) return false;
+
+  HANDLE proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (!proc) return false;
+
+  wchar_t path[MAX_PATH]{};
+  DWORD n = MAX_PATH;
+  const BOOL ok = QueryFullProcessImageNameW(proc, 0, path, &n);
+  CloseHandle(proc);
+  if (!ok || n == 0) return false;
+
+  const wchar_t* base = path;
+  for (const wchar_t* p = path; *p; ++p) {
+    if (*p == L'\\' || *p == L'/') base = p + 1;
+  }
+  return lstrcmpiW(base, L"StartMenuExperienceHost.exe") == 0 ||
+         lstrcmpiW(base, L"SearchHost.exe") == 0 ||
+         lstrcmpiW(base, L"ShellExperienceHost.exe") == 0 ||
+         lstrcmpiW(base, L"ShellHost.exe") == 0 ||
+         lstrcmpiW(base, L"TextInputHost.exe") == 0;
+}
+
 bool IsFullscreenAppCoveringTaskbar(const TaskbarInfo& info) {
   if (!info.valid) return true;
 
@@ -62,6 +88,8 @@ bool IsFullscreenAppCoveringTaskbar(const TaskbarInfo& info) {
   HWND fg = GetForegroundWindow();
   if (!fg || !IsWindowVisible(fg)) return false;
   if (fg == GetShellWindow()) return false;
+  // Start / Search / shell flyouts can be large or flip QUNS_APP — never treat as game fullscreen.
+  if (IsShellExperienceProcess(fg)) return false;
 
   wchar_t cls[256]{};
   GetClassNameW(fg, cls, 256);
@@ -105,6 +133,7 @@ bool IsFullscreenAppCoveringTaskbar(const TaskbarInfo& info) {
     if (!root) root = hit;
     if (root == info.tray) continue;
     if (info.tray && IsChild(info.tray, hit)) continue;
+    if (IsShellExperienceProcess(root)) continue;
     // Ignore our own overlay host.
     wchar_t hitCls[128]{};
     GetClassNameW(root, hitCls, 128);
@@ -237,12 +266,16 @@ bool TaskbarHost::CreateChild() {
 bool TaskbarHost::CreateOverlay() {
   const int w = info_.rect.right - info_.rect.left;
   const int h = info_.rect.bottom - info_.rect.top;
+  // Own the popup to Shell_TrayWnd (WS_POPUP + owner, not WS_CHILD). Owned windows
+  // stay above their owner in z-order, which survives Start/Search on Win11; a
+  // free-floating HWND_TOPMOST overlay gets permanently demoted behind the bar.
   hwnd_ = CreateWindowExW(
       WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
       kHostClass, L"", WS_POPUP,
       info_.rect.left, info_.rect.top, w, h,
-      nullptr, nullptr, instance_, userData_);
+      info_.tray, nullptr, instance_, userData_);
   if (!hwnd_) return false;
-  ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
+  SetWindowPos(hwnd_, HWND_TOPMOST, info_.rect.left, info_.rect.top, w, h,
+               SWP_NOACTIVATE | SWP_SHOWWINDOW);
   return true;
 }
