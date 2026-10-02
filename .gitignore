@@ -1,7 +1,5 @@
-# Multi-model plan review outputs (pi audits)
-docs/audit/*.txt
-docs/audit/*.err.txt
-docs/audit/shots/
+# Multi-model plan review outputs (pi audits) — keep local only, never publish
+docs/audit/
 
 # Visual Studio / MSVC
 .vs/
