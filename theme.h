@@ -15,6 +15,12 @@ enum class ThemeMode : int {
   ForceLight = 2,
 };
 
+enum class LanguagePreference : int {
+  FollowSystem = 0,
+  English = 1,
+  SimplifiedChinese = 2,
+};
+
 enum class TaskbarEdge : int {
   Bottom = 0,
   Top = 1,
@@ -36,6 +42,7 @@ struct Palette {
 struct AppSettings {
   StrengthId strength = StrengthId::Present;
   ThemeMode themeMode = ThemeMode::FollowWindows;
+  LanguagePreference language = LanguagePreference::FollowSystem;
   bool enabled = true;
   bool startWithWindows = false;
 };

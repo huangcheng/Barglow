@@ -2,6 +2,7 @@
 #include "Barglow.h"
 
 #include "audio_capture.h"
+#include "i18n.h"
 #include "renderer.h"
 #include "settings.h"
 #include "settings_dlg.h"
@@ -41,6 +42,7 @@ void ShowContextMenu(HWND hwnd) {
   GetCursorPos(&pt);
   HMENU menu = LoadMenuW(g_instance, MAKEINTRESOURCEW(IDC_BARGLOW));
   if (!menu) return;
+  LocalizeMenu(menu);
   HMENU popup = GetSubMenu(menu, 0);
   SetForegroundWindow(hwnd);
   TrackPopupMenu(popup, TPM_RIGHTBUTTON, pt.x, pt.y, 0, hwnd, nullptr);
@@ -56,7 +58,7 @@ void AddTrayIcon(HWND hwnd) {
   g_nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
   g_nid.uCallbackMessage = WM_TRAY;
   g_nid.hIcon = LoadIconW(g_instance, MAKEINTRESOURCEW(IDI_BARGLOW));
-  lstrcpynW(g_nid.szTip, L"Barglow", ARRAYSIZE(g_nid.szTip));
+  lstrcpynW(g_nid.szTip, Tr(StrId::TrayTip), ARRAYSIZE(g_nid.szTip));
   Shell_NotifyIconW(NIM_ADD, &g_nid);
   g_nid.uVersion = NOTIFYICON_VERSION_4;
   Shell_NotifyIconW(NIM_SETVERSION, &g_nid);
@@ -66,11 +68,34 @@ void RemoveTrayIcon() {
   Shell_NotifyIconW(NIM_DELETE, &g_nid);
 }
 
-INT_PTR CALLBACK AboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM) {
+INT_PTR CALLBACK AboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_INITDIALOG:
+      ApplyDialogIcon(hDlg, g_instance);
+      SetWindowTextW(hDlg, Tr(StrId::AboutTitle));
+      SetDlgItemTextW(hDlg, IDC_ABOUT_TITLE, Tr(StrId::AppName));
+      SetDlgItemTextW(hDlg, IDC_ABOUT_DESC, Tr(StrId::AboutDesc));
+      SetDlgItemTextW(hDlg, IDC_ABOUT_VERSION, Tr(StrId::AboutVersion));
+      SetDlgItemTextW(hDlg, IDC_ABOUT_AUTHOR, Tr(StrId::AboutAuthor));
+      SetDlgItemTextW(hDlg, IDC_ABOUT_REPO, Tr(StrId::AboutRepoLabel));
+      SetDlgItemTextW(hDlg, IDOK, Tr(StrId::Ok));
       CenterDialogOnDesktop(hDlg);
       return TRUE;
+    case WM_NOTIFY: {
+      const auto* hdr = reinterpret_cast<LPNMHDR>(lParam);
+      if (hdr && hdr->idFrom == IDC_ABOUT_REPO &&
+          (hdr->code == NM_CLICK || hdr->code == NM_RETURN)) {
+        const auto* link = reinterpret_cast<PNMLINK>(lParam);
+        if (link && link->item.szUrl[0]) {
+          ShellExecuteW(hDlg, L"open", link->item.szUrl, nullptr, nullptr, SW_SHOWNORMAL);
+        } else {
+          ShellExecuteW(hDlg, L"open", L"https://github.com/huangcheng/Barglow", nullptr,
+                        nullptr, SW_SHOWNORMAL);
+        }
+        return TRUE;
+      }
+      break;
+    }
     case WM_COMMAND:
       if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
         EndDialog(hDlg, LOWORD(wParam));
@@ -251,11 +276,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR,
     return 0;
   }
 
-  INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_STANDARD_CLASSES };
+  INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_STANDARD_CLASSES | ICC_LINK_CLASS };
   InitCommonControlsEx(&icc);
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   SettingsLoad(g_settings);
+  ApplyLanguagePreference(g_settings.language);
   if (!CreateMainWindow()) {
     CoUninitialize();
     ReleaseMutex(g_mutex);

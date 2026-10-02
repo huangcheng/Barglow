@@ -24,6 +24,21 @@
 #define IDC_THEME_LIGHT                 1023
 #define IDC_ENABLE                      1031
 #define IDC_AUTOSTART                   1032
+#define IDC_ABOUT_REPO                  1041
+#define IDC_ABOUT_TITLE                 1042
+#define IDC_ABOUT_DESC                  1043
+#define IDC_ABOUT_VERSION               1044
+#define IDC_ABOUT_AUTHOR                1045
+#define IDC_GRP_STRENGTH                1051
+#define IDC_GRP_THEME                   1052
+#define IDC_GRP_LANGUAGE                1053
+#define IDC_LANG_FOLLOW                 1061
+#define IDC_LANG_EN                     1062
+#define IDC_LANG_ZH                     1063
+#define IDC_GRP_LANGUAGE                1053
+#define IDC_LANG_FOLLOW                 1061
+#define IDC_LANG_EN                     1062
+#define IDC_LANG_ZH                     1063
 
 #ifndef IDC_STATIC
 #define IDC_STATIC                      -1

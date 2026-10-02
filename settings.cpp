@@ -44,6 +44,8 @@ bool SettingsLoad(AppSettings& out) {
       GetPrivateProfileIntW(L"Barglow", L"Strength", 1, path.c_str()), 0, 2));
   out.themeMode = static_cast<ThemeMode>(ClampInt(
       GetPrivateProfileIntW(L"Barglow", L"ThemeMode", 0, path.c_str()), 0, 2));
+  out.language = static_cast<LanguagePreference>(ClampInt(
+      GetPrivateProfileIntW(L"Barglow", L"Language", 0, path.c_str()), 0, 2));
   out.enabled =
       GetPrivateProfileIntW(L"Barglow", L"Enabled", 1, path.c_str()) != 0;
   out.startWithWindows = AutostartIsEnabled();
@@ -64,6 +66,7 @@ bool SettingsSave(const AppSettings& settings) {
 
   writeInt(L"Strength", static_cast<int>(settings.strength));
   writeInt(L"ThemeMode", static_cast<int>(settings.themeMode));
+  writeInt(L"Language", static_cast<int>(settings.language));
   writeInt(L"Enabled", settings.enabled ? 1 : 0);
 
   if (!MoveFileExW(tempPath.c_str(), finalPath.c_str(),

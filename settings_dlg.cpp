@@ -1,7 +1,10 @@
 #include "settings_dlg.h"
 
 #include "Resource.h"
+#include "i18n.h"
 #include "settings.h"
+
+#include <shellapi.h>
 
 namespace {
 
@@ -10,12 +13,33 @@ AppSettings* g_settings = nullptr;
 bool* g_dirty = nullptr;
 HINSTANCE g_instance = nullptr;
 
+void LocalizeSettingsDialog(HWND hDlg) {
+  SetWindowTextW(hDlg, Tr(StrId::SettingsTitle));
+  SetDlgItemTextW(hDlg, IDC_GRP_STRENGTH, Tr(StrId::Strength));
+  SetDlgItemTextW(hDlg, IDC_STRENGTH_QUIET, Tr(StrId::Quiet));
+  SetDlgItemTextW(hDlg, IDC_STRENGTH_PRESENT, Tr(StrId::Present));
+  SetDlgItemTextW(hDlg, IDC_STRENGTH_LOUD, Tr(StrId::Loud));
+  SetDlgItemTextW(hDlg, IDC_GRP_THEME, Tr(StrId::Theme));
+  SetDlgItemTextW(hDlg, IDC_THEME_FOLLOW, Tr(StrId::FollowWindows));
+  SetDlgItemTextW(hDlg, IDC_THEME_DARK, Tr(StrId::ForceDark));
+  SetDlgItemTextW(hDlg, IDC_THEME_LIGHT, Tr(StrId::ForceLight));
+  SetDlgItemTextW(hDlg, IDC_GRP_LANGUAGE, Tr(StrId::Language));
+  SetDlgItemTextW(hDlg, IDC_LANG_FOLLOW, Tr(StrId::LangFollowSystem));
+  SetDlgItemTextW(hDlg, IDC_LANG_EN, Tr(StrId::LangEnglish));
+  SetDlgItemTextW(hDlg, IDC_LANG_ZH, Tr(StrId::LangZhHans));
+  SetDlgItemTextW(hDlg, IDC_ENABLE, Tr(StrId::EnableVisualizer));
+  SetDlgItemTextW(hDlg, IDC_AUTOSTART, Tr(StrId::StartWithWindows));
+  SetDlgItemTextW(hDlg, IDOK, Tr(StrId::Close));
+}
+
 void SyncControls(HWND hDlg) {
   if (!g_settings) return;
   CheckRadioButton(hDlg, IDC_STRENGTH_QUIET, IDC_STRENGTH_LOUD,
                    IDC_STRENGTH_QUIET + static_cast<int>(g_settings->strength));
   CheckRadioButton(hDlg, IDC_THEME_FOLLOW, IDC_THEME_LIGHT,
                    IDC_THEME_FOLLOW + static_cast<int>(g_settings->themeMode));
+  CheckRadioButton(hDlg, IDC_LANG_FOLLOW, IDC_LANG_ZH,
+                   IDC_LANG_FOLLOW + static_cast<int>(g_settings->language));
   CheckDlgButton(hDlg, IDC_ENABLE, g_settings->enabled ? BST_CHECKED : BST_UNCHECKED);
   CheckDlgButton(hDlg, IDC_AUTOSTART,
                  g_settings->startWithWindows ? BST_CHECKED : BST_UNCHECKED);
@@ -26,9 +50,11 @@ void MarkDirty() {
   if (g_settings) SettingsSave(*g_settings);
 }
 
-INT_PTR CALLBACK SettingsProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+INT_PTR CALLBACK SettingsProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM) {
   switch (msg) {
     case WM_INITDIALOG:
+      ApplyDialogIcon(hDlg, g_instance);
+      LocalizeSettingsDialog(hDlg);
       SyncControls(hDlg);
       CenterDialogOnDesktop(hDlg);
       return TRUE;
@@ -42,6 +68,19 @@ INT_PTR CALLBACK SettingsProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
         MarkDirty();
       } else if (id == IDC_THEME_FOLLOW || id == IDC_THEME_DARK || id == IDC_THEME_LIGHT) {
         g_settings->themeMode = static_cast<ThemeMode>(id - IDC_THEME_FOLLOW);
+        MarkDirty();
+      } else if (id == IDC_LANG_FOLLOW || id == IDC_LANG_EN || id == IDC_LANG_ZH) {
+        g_settings->language = static_cast<LanguagePreference>(id - IDC_LANG_FOLLOW);
+        ApplyLanguagePreference(g_settings->language);
+        LocalizeSettingsDialog(hDlg);
+        // Refresh tray tip language.
+        NOTIFYICONDATAW tip{};
+        tip.cbSize = sizeof(tip);
+        tip.hWnd = FindWindowW(L"BarglowHiddenMain", L"Barglow");
+        tip.uID = 1;
+        tip.uFlags = NIF_TIP;
+        lstrcpynW(tip.szTip, Tr(StrId::TrayTip), ARRAYSIZE(tip.szTip));
+        Shell_NotifyIconW(NIM_MODIFY, &tip);
         MarkDirty();
       } else if (id == IDC_ENABLE) {
         g_settings->enabled = IsDlgButtonChecked(hDlg, IDC_ENABLE) == BST_CHECKED;
